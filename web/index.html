@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Voz · Texto a audio</title>
+<style>
+  :root {
+    --bg: #f6f6f4;
+    --panel: #ffffff;
+    --ink: #1c1b19;
+    --muted: #6b6862;
+    --line: #e3e1dc;
+    --accent: #2f6f5e;
+    --accent-ink: #ffffff;
+    --warn: #a8410f;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px -12px rgba(0,0,0,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14150f;
+      --panel: #1d1f17;
+      --ink: #f0eee6;
+      --muted: #a3a094;
+      --line: #2e3026;
+      --accent: #57b894;
+      --accent-ink: #0d1a14;
+      --warn: #f0a06a;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.8);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 28px 20px 64px; }
+  header { margin-bottom: 22px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #a8a49a; margin-right: 6px; vertical-align: 1px; }
+  .dot.ok { background: #34a853; }
+  .dot.bad { background: #d93025; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 240px;
+    resize: vertical;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: 1.6;
+  }
+  textarea:focus, select:focus, input:focus, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.grow { flex: 1 1 220px; }
+  label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+
+  select, input[type="text"] {
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    color: inherit;
+    font: inherit;
+  }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .range-wrap { min-width: 190px; }
+  .range-value { font-variant-numeric: tabular-nums; font-size: .85rem; color: var(--muted); }
+
+  button {
+    font: inherit;
+    font-weight: 600;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: transform .06s ease, opacity .15s ease;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button .icon { margin-right: 6px; }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+  .spacer { flex: 1; }
+
+  .meta { display: flex; gap: 18px; flex-wrap: wrap; font-size: .85rem; color: var(--muted); margin-top: 10px; font-variant-numeric: tabular-nums; }
+
+  .progress {
+    height: 8px; border-radius: 99px; background: var(--line);
+    overflow: hidden; margin-top: 16px; display: none;
+  }
+  .progress.show { display: block; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+
+  .status { font-size: .9rem; color: var(--muted); margin-top: 10px; min-height: 1.4em; }
+  .status.error { color: var(--warn); }
+
+  .results { display: none; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .results.show { display: block; }
+  .results h2 { font-size: 1rem; margin: 0 0 12px; }
+  .results audio { width: 100%; margin-bottom: 12px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  details { margin-top: 18px; }
+  summary { cursor: pointer; font-size: .9rem; color: var(--muted); }
+  details pre {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; overflow-x: auto; font-size: .82rem; line-height: 1.5;
+  }
+  .check { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--muted); cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+  footer { color: var(--muted); font-size: .82rem; margin-top: 26px; text-align: center; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Voz · texto a audio</h1>
+    <p class="sub"><span id="conn" class="dot"></span><span id="connText">Conectando con el motor de voz…</span></p>
+  </header>
+
+  <div class="panel">
+    <textarea id="text" placeholder="Pega aquí el texto que quieres narrar. Puede ser un módulo entero: se trocea solo en frases y se une en un único MP3."></textarea>
+
+    <div class="meta">
+      <span><strong id="chars">0</strong> caracteres</span>
+      <span><strong id="words">0</strong> palabras</span>
+      <span>duración estimada <strong id="dur">0:00</strong></span>
+      <span id="chunks"></span>
+    </div>
+
+    <div class="toolbar">
+      <label class="check"><input type="checkbox" id="stripHtml"> Limpiar HTML del texto pegado</label>
+      <div class="spacer"></div>
+      <button id="pasteClear" type="button">Vaciar</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <div class="field grow">
+        <label for="voice">Voz</label>
+        <select id="voice">
+          <optgroup label="Español">
+            <option value="ef_dora" selected>Dora · mujer (castellano)</option>
+            <option value="em_alex">Alex · hombre (castellano)</option>
+            <option value="em_santa">Santa · hombre, grave (castellano)</option>
+          </optgroup>
+          <optgroup label="Otros idiomas">
+            <option value="af_heart">Heart · mujer (inglés US)</option>
+            <option value="af_bella">Bella · mujer (inglés US)</option>
+            <option value="am_michael">Michael · hombre (inglés US)</option>
+            <option value="bf_emma">Emma · mujer (inglés UK)</option>
+            <option value="ff_siwis">Siwis · mujer (francés)</option>
+            <option value="if_sara">Sara · mujer (italiano)</option>
+            <option value="pf_dora">Dora · mujer (portugués BR)</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="field range-wrap">
+        <label for="speed">Velocidad <span class="range-value" id="speedLabel">1,00×</span></label>
+        <input type="range" id="speed" min="0.7" max="1.3" step="0.05" value="1">
+      </div>
+
+      <div class="field grow">
+        <label for="filename">Nombre del archivo</label>
+        <input type="text" id="filename" value="locucion" spellcheck="false">
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="primary" id="generate" type="button"><span class="icon">▶</span>Generar audio</button>
+      <button id="sample" type="button">Probar la voz (5 s)</button>
+      <div class="spacer"></div>
+      <span class="status" id="status"></span>
+    </div>
+
+    <div class="progress" id="progress"><div></div></div>
+
+    <div class="results" id="results">
+      <h2>Listo</h2>
+      <audio id="player" controls></audio>
+      <div class="actions">
+        <button class="primary" id="download" type="button">Descargar MP3</button>
+        <button id="downloadTxt" type="button">Descargar guion</button>
+      </div>
+    </div>
+
+    <details>
+      <summary>Usar la API desde fuera (n8n, scripts, Python…)</summary>
+      <pre id="apiExample">curl -X POST http://192.168.1.41:8890/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{"model":"kokoro","input":"Hola, esto es una prueba.","voice":"ef_dora","response_format":"mp3","speed":1.0}' \
+  --output voz.mp3</pre>
+    </details>
+  </div>
+
+  <footer>Kokoro-82M · se ejecuta en tu NAS, sin enviar texto a ningún sitio · textos largos tardan, ten paciencia</footer>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const MAX_CHARS = 1200;      // trozo por petición (Kokoro va cómodo así)
+  const CHARS_PER_SEC = 15.5;  // ritmo aproximado de Kokoro a velocidad 1
+
+  let audioUrl = null;
+  let busy = false;
+  let lastPlainText = '';
+
+  /* ---------- estado del motor ---------- */
+
+  async function checkEngine() {
+    try {
+      const res = await fetch('/api/v1/audio/voices', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data.voices || []);
+      const ids = list.map(v => (typeof v === 'string' ? v : v.id));
+      const missing = ['ef_dora', 'em_alex'].filter(v => ids.length && !ids.includes(v));
+      $('conn').className = 'dot ok';
+      $('connText').textContent = missing.length
+        ? 'Motor listo, pero faltan voces: ' + missing.join(', ')
+        : 'Motor listo · ' + ids.length + ' voces disponibles';
+    } catch (err) {
+      $('conn').className = 'dot bad';
+      $('connText').textContent = 'No se puede conectar con el motor de voz (' + err.message + ')';
+    }
+  }
+
+  /* ---------- texto ---------- */
+
+  function stripHtml(input) {
+    return input
+      .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|h[1-6]|tr|section|article)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function plainText() {
+    const raw = $('text').value;
+    return $('stripHtml').checked ? stripHtml(raw) : raw;
+  }
+
+  function fmtDuration(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function updateMeta() {
+    const text = plainText();
+    const chars = text.length;
+    const words = (text.match(/[\p{L}\p{N}]+/gu) || []).length;
+    const speed = parseFloat($('speed').value);
+    const chunks = chunkText(text);
+    $('chars').textContent = chars.toLocaleString('es-ES');
+    $('words').textContent = words.toLocaleString('es-ES');
+    $('dur').textContent = fmtDuration((chars / CHARS_PER_SEC) / speed);
+    $('chunks').textContent = chunks.length > 1 ? chunks.length + ' fragmentos' : '';
+  }
+
+  function chunkText(raw, max = MAX_CHARS) {
+    const text = raw.replace(/\r/g, '').trim();
+    if (!text) return [];
+    const pieces = text.match(/[^.!?…\n]+[.!?…]*\s*/g) || [text];
+    const out = [];
+    let cur = '';
+    for (const piece of pieces) {
+      const t = piece.trim();
+      if (!t) continue;
+      // frase kilométrica sin puntuación: partir por palabras
+      if (t.length > max) {
+        if (cur) { out.push(cur.trim()); cur = ''; }
+        let rest = t;
+        while (rest.length > max) {
+          let cut = rest.lastIndexOf(' ', max);
+          if (cut < max * 0.5) cut = max;
+          out.push(rest.slice(0, cut).trim());
+          rest = rest.slice(cut).trim();
+        }
+        if (rest) cur = rest;
+        continue;
+      }
+      if ((cur + t).length > max && cur) {
+        out.push(cur.trim());
+        cur = t;
+      } else {
+        cur += t + ' ';
+      }
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  }
+
+  /* ---------- síntesis ---------- */
+
+  async function synthesize(chunk, speed) {
+    const res = await fetch('/api/v1/audio/speech', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'kokoro',
+        input: chunk,
+        voice: $('voice').value,
+        response_format: 'mp3',
+        speed: speed,
+        normalization_options: { normalize: true }
+      })
+    });
+    if (!res.ok) {
+      let detail = 'HTTP ' + res.status;
+      try { detail += ': ' + (await res.text()).slice(0, 300); } catch (_) {}
+      throw new Error(detail);
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  function setBusy(state, message, cls) {
+    busy = state;
+    $('generate').disabled = state;
+    $('sample').disabled = state;
+    $('status').textContent = message || '';
+    $('status').className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  function setProgress(ratio) {
+    const bar = $('progress');
+    bar.classList.toggle('show', ratio !== null);
+    bar.firstElementChild.style.width = Math.round((ratio || 0) * 100) + '%';
+  }
+
+  async function generate() {
+    if (busy) return;
+    const text = plainText();
+    if (!text.trim()) {
+      setBusy(false, 'Escribe o pega algo de texto primero.', 'error');
+      return;
+    }
+    const chunks = chunkText(text);
+    const speed = parseFloat($('speed').value);
+
+    lastPlainText = text;
+    $('results').querySelector('h2').textContent = 'Listo';
+    $('results').classList.remove('show');
+    if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null; }
+
+    const parts = [];
+    const started = Date.now();
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        setBusy(true, 'Generando fragmento ' + (i + 1) + ' de ' + chunks.length + '…');
+        setProgress(i / chunks.length);
+        parts.push(await synthesize(chunks[i], speed));
+        setProgress((i + 1) / chunks.length);
+      }
+
+      // Los MP3 de Kokoro comparten formato, así que se pueden concatenar.
+      const blob = new Blob(parts, { type: 'audio/mpeg' });
+      audioUrl = URL.createObjectURL(blob);
+      $('player').src = audioUrl;
+
+      const mb = (blob.size / 1048576).toFixed(1);
+      const secs = Math.round((Date.now() - started) / 1000);
+      setBusy(false, 'Hecho: ' + mb + ' MB en ' + fmtDuration(secs) + '.');
+      $('results').classList.add('show');
+      $('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      setBusy(false, 'Error al generar: ' + err.message, 'error');
+      setProgress(null);
+    }
+  }
+
+  async function sample() {
+    if (busy) return;
+    const speed = parseFloat($('speed').value);
+    try {
+      setBusy(true, 'Generando muestra…');
+      const bytes = await synthesize(
+        'Hola, esta es una prueba de voz. Si te suena bien, podemos narrar el curso entero.',
+        speed
+      );
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
+      $('player').src = audioUrl;
+      $('results').querySelector('h2').textContent = 'Muestra de voz';
+      $('results').classList.add('show');
+      $('player').play().catch(() => {});
+      setBusy(false, 'Muestra lista.');
+    } catch (err) {
+      setBusy(false, 'Error: ' + err.message, 'error');
+    }
+  }
+
+  /* ---------- descargas ---------- */
+
+  function safeName() {
+    const base = ($('filename').value || 'locucion').trim().replace(/[\\/:*?"<>|]+/g, '-');
+    return base || 'locucion';
+  }
+
+  function download() {
+    if (!audioUrl) return;
+    const a = document.createElement('a');
+    a.href = audioUrl;
+    a.download = safeName() + '.mp3';
+    a.click();
+  }
+
+  function downloadTxt() {
+    if (!lastPlainText) return;
+    const blob = new Blob([lastPlainText], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = safeName() + '.txt';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  /* ---------- eventos ---------- */
+
+  $('text').addEventListener('input', updateMeta);
+  $('stripHtml').addEventListener('change', updateMeta);
+  $('speed').addEventListener('input', (e) => {
+    $('speedLabel').textContent = parseFloat(e.target.value).toFixed(2).replace('.', ',') + '×';
+    updateMeta();
+  });
+  $('speed').addEventListener('change', updateMeta);
+  $('pasteClear').addEventListener('click', () => {
+    $('text').value = '';
+    updateMeta();
+    $('text').focus();
+  });
+  $('generate').addEventListener('click', generate);
+  $('sample').addEventListener('click', sample);
+  $('download').addEventListener('click', download);
+  $('downloadTxt').addEventListener('click', downloadTxt);
+
+  // Ctrl/Cmd + Enter para generar
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); generate(); }
+  });
+
+  $('apiExample').textContent =
+    'curl -X POST ' + location.origin.replace(/:\d+$/, ':8890') + '/v1/audio/speech \\\n' +
+    '  -H "Content-Type: application/json" \\\n' +
+    '  -d \'{"model":"kokoro","input":"Hola, esto es una prueba.","voice":"ef_dora","response_format":"mp3","speed":1.0}\' \\\n' +
+    '  --output voz.mp3';
+
+  updateMeta();
+  checkEngine();
+})();
+</script>
+</body>
+</html>

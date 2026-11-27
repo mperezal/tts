@@ -1,0 +1,44 @@
+name: tts
+
+# Text-to-speech local (Kokoro-82M) para el NAS UGREEN DXP2800 (Intel N100, sin GPU).
+#
+#   kokoro  -> API compatible con OpenAI en http://<nas>:8890/v1/audio/speech
+#              (también trae su propia interfaz en http://<nas>:8890/web)
+#   web     -> interfaz propia en español, en http://<nas>:8891
+#
+# La interfaz web habla con la API a través de nginx (/api/...) para evitar CORS.
+
+services:
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: kokoro-tts
+    restart: unless-stopped
+    ports:
+      - "8890:8880"
+    environment:
+      - API_LOG_LEVEL=INFO
+      # Libera la RAM del modelo tras 10 min sin uso y lo recarga al vuelo.
+      - MODEL_AUTO_UNLOAD_TIMEOUT_SECONDS=600
+    mem_limit: 3g
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request;urllib.request.urlopen('http://localhost:8880/health', timeout=3)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  # Interfaz propia. Los ficheros se hornean en la imagen: las ACL del volumen
+  # de UGOS no dejan al usuario `nginx` leer un bind mount (daba 403).
+  web:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    image: tts-web:local
+    container_name: tts-web
+    restart: unless-stopped
+    ports:
+      - "8891:80"
+    depends_on:
+      - kokoro
